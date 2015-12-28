@@ -1,0 +1,67 @@
+** Notes regarding differences between python and ruby.
+** Peter Van Bohning
+** Started this notes file Wednesday November 26, 2008
+** I think I started the python 2 ruby project two days before
+
+This is especially necessary because this isn't the sort of thing we can play by ear.  If there's particular strange differences that require special accommodation, we have to plan that out I think.
+
+Also, I considered having the grammar code output a ruby token string, to be handled by a pretty printer and that's not a bad idea except it seems like overkill.  We have to add all those symbols and then, in addition to whatever... hmmm... actually seems like a really good idea.  In particular the pretty printer could track indentation, spaces, etc., things that have nothing to do with translation between keywords and logic.
+
+I think the languages are so similar, both object oriented, both ultimately C derivatives.  Its mainly syntax, one or two strange caveats with statements and functions, order of operation, and some value changes.  I think a printer will separate out that part of things, but otherwise, we're good to go.
+
+Okay, yield, and global, and variable name scopes are semi tricky and I'm thinking that I may as well write a kind of parse tree, just for practice.  I can also use this to handle the multiple assignment stuff more cleanly.
+
+-- Identifiers
+Ruby has a very consistent naming convention enforced by the language.  Its one thing to add @, @@, and $ to the beginning of variable names, but its another to capitalize constants and class names, etc.  Also we have to figure out which are global variables.  For just renaming class names and the like, we need to keep track of the names in case there's already a capitalized name.  If there is, its not a problem, we just add an underscore to the other.  But we do have to be able to find the other in the code and recognize that we already have a variable with that name now.
+
+Basically, we assume the python code compiles and then we keep track of anything we change.
+
+As for global variables, that's a little trickier, like we have to track scope.  [FIXME]  I need to look into how global variables work in ruby better and then I think it will come clear.  I think python is ultimately a simpler language so it shouldn't be much of a problem.
+
+Also, we still need to do 0x before numbers and a few other things, octal, etc.
+
+-- Variables
+
+So far, I know that you can't do multiple assigns with a, b = 1, 2 for instance, as in python.  Not a problem, but we need to, for each variable done in this way, put the variable on a stack so that when we look at the values, we can separate them out into multiple statements.  One question is whether there are also more complicated forms like a, b = 2, c = 3, 4, 5 in python.  I doubt it.
+
+The above is a strange issue.  It looks like the python grammar will handle almost anything here, but then right after it chokes because it "can't assign to a literal", etc.. so type checking gets it.  (I'm not really clear on what constitutes the difference between syntax and grammar.. I mean I have my meaning for those words but as for what's supposed to be done at different stages, especially for something weird like this project.)  The problem is that a, b, c, is used as "testlist" for all sorts of things.  I think what I need to do is separate out the ones that are used for equality assignments, i.e., with equals, and give those the same grammar under a different non-term symbol name so that I can deal with them separately from things like their appearance in function names and the like.  I don't think this would cause any problems with, for instance, assignment in function names since its just the, basically, array to array assignment that's an issue, that has to be divided up into separate statements, and, for instance, python enforces that the lists/arrays have the same number of elements.  (I need to start being consistent in my use of terms like list or array because they do have specific meanings in online language docs.) 
+
+Ruby has some weird stuff with nil values.  I.e., how and when things evaluate to true, those will have to maybe be fixed up.
+
+-- Keywords
+
+Python has "yield" which is a little weird.  Basically what we have to do is change the function that is a "yield generator" to a class and then add a next() method to the generator class which calls sub functions that are made out of the original function divided up by its yield statements.  Yield statements can be in if statements, etc., though, so its not that straightforward.  I.e., one run could then avoid the next run.  But not really, all we need to do is hold the state and then start at the next point.  So so what if the next point avoids something.  That's it actually, we have to make sure that all the sub-functions run into each other.
+
+The question is what all this reqiures.  It looks like we need to see the "yield" statement within a function, recognize that function then as a generator, and then go back and add a class for it.  Clearly this means that we cannot have written
+out the function, or we'd have to delete it...
+
+So this would require us to write a parse tree.  Which might come in handy for other things as well I guess.  But "yield" is used so seldom that I would hate to write a parse tree just for it.
+
+Actually I found a site on the net about yield tricks... it can be called from within, for instance, a for loop as well, meaning we have to find for loops, and duplicate them and change the initial value in the next function.  The thing is though, the for loops range could change, meaning that we have to be able to add more functions... so the above is not the way to do this... well, if they added it as a word in the language, its going to be a pretty hairy thing to deal with, not something you can get around.  I guess each time the yield is called, we could add a new function for the next time?  but does ruby have something to start at arbitrary points in functions?  I doubt it.
+
+There's also "with" and "except" and maybe a couple others that are easier to deal with.
+
+"del" is also a little trickier, it depends on what deleting objects should do, maybe we can just ignore it, or maybe we would have to initialize things after it.
+
+The keyword "global" makes a nearby local variable global.  However, it looks like you can use the same name in a local context and it will reference a different variable.  This means that to represent "global" properly, we need to keep track of namespaces/scopes.
+
+-- Operators
+
+There's probably some priority issues.  If there are, we have to reorder statements to preserve the intended priority.  This is probably only for one statement but, like the issues with the multiple variable assignment, we have to be looking at the variables and their assignment in a more complex way.
+
+Basically, we should do tests on operator evaluation in both languages and check the results.  And then, same thing as with the comma assignment issue above, we could add extra grammar non terminals for anything that's more than one operation without intervening parentheses.  Then we could, again, put each of the variables on a special stack, likely different from the comma assignment stack, and then have a function that went through that stack after it was finished and output it in the right order given the operations.  Assuming, again, that order of operations is different in the two languages.
+
+Also, ruby doesn't have augment assignment operators like += at all, as far as I know.  So that just means taking them out and doing =, repeat the name, repeat the augment type, and then finish off the expression.  Check out that with the comma assignment too, if that's possible.  I don't think it is, because they have separate grammar terms.
+
+-- Functions
+
+There's this keyword stuff in functions  like f(a, b, c, *keywords, **keywords).  I have no idea what this does or what its used for but it significantly impacts how we deal with functions.  For instance, if its some kind of static mapping, then we can just tack something on to the front of the function.  But it might make more sense or be cleaner to store that mapping somewhere and execute it within the function.  [FIXME]
+
+Functions have to be defined before they are used, so that's the same.
+
+-- Classes
+
+It looks actually like they're moving to a model more like ruby from "old-style" to "new-style classes, but I just skimmed the paragraph.
+
+-- Standard Libraries
+Both Python and Ruby have standard libraries and I think a lot of them are just either hooks into standard C libraries or they are hooks into relatively similar C functions.  For the former, there's not much of a problem, just some interesting translations of the hooks.  For the latter, we might need to translate specific functions and terms to different ones in ruby or even have a go between.  There should maybe also be something to recursively translate imported scripts.
